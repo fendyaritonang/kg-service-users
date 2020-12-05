@@ -4,7 +4,7 @@
 1. Install latest NodeJS version in your machine and ensure npm syntax is working. You can execute this code in console "npm --version". If it return the version, that means you have successfully installed NodeJS
 2. Install MongoDB in your local or get a cloud of MongoDB account
 
-### Installation for Production
+### Installation
 1. Copy file source into a folder
 2. Open a console and navigate to the folder
 3. Execute "npm install" to install all npm packages of this service
