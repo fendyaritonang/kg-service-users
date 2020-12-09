@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const validator = require('validator');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const moment = require('moment');
 
 const userSchema = new mongoose.Schema(
   {
@@ -49,14 +50,6 @@ const userSchema = new mongoose.Schema(
     },
     tokens: [
       {
-        issuedDate: {
-          type: Date,
-          required: true,
-        },
-        activeDate: {
-          type: Date,
-          required: true,
-        },
         token: {
           type: String,
           required: true,
@@ -83,12 +76,17 @@ userSchema.methods.toJSON = function () {
 
 userSchema.methods.generateAuthToken = async function () {
   const user = this;
-  const token = jwt.sign({ _id: user._id.toString() }, process.env.JWT_SECRET);
+  const data = {
+    _id: user._id.toString(),
+    email: user.email,
+    name: user.name,
+    language: user.language,
+  };
+  const token = jwt.sign({ ...data }, process.env.JWT_SECRET, {
+    expiresIn: 60 * 60, // 60 mins
+  });
 
-  const issuedDate = Date.now();
-  const activeDate = issuedDate;
-
-  user.tokens = user.tokens.concat({ issuedDate, activeDate, token });
+  user.tokens = user.tokens.concat({ token });
   await user.save();
 
   return token;
@@ -109,6 +107,13 @@ userSchema.statics.findByCredentials = async (email, password) => {
   }
 
   return user;
+};
+
+userSchema.statics.removeToken = async (userObject, tokenToRemove) => {
+  userObject.tokens = userObject.tokens.filter((token) => {
+    return token.token !== tokenToRemove;
+  });
+  await userObject.save();
 };
 
 // Hash the plain text password before saving

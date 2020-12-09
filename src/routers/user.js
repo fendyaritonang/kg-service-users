@@ -1,6 +1,6 @@
 const express = require('express');
 const User = require('../models/user');
-const auth = require('../middleware/auth');
+const { auth, decodeToken } = require('../middleware/auth');
 const router = new express.Router();
 const cryptoRandom = require('crypto-random-string');
 const { sendEmailConfirmation, sendForgotPassword } = require('../utils/mail');
@@ -160,6 +160,54 @@ router.post('/v1/users/login', async (req, res) => {
 
 /**
  * @swagger
+ * /v1/users/token/refresh/{token}:
+ *  patch:
+ *      summary: Refresh user's authentication token
+ *      description: Refresh user's authentication token
+ *      parameters:
+ *          -   in: "path"
+ *              name: "token"
+ *              description: "Authentication token"
+ *              required: true
+ *              type: "string"
+ *      responses:
+ *          '200':
+ *              description: Token was successfully refreshed
+ *              schema:
+ *                  type: "object"
+ *                  properties:
+ *                      newtoken:
+ *                          type: "string"
+ *                          example: "5ebe3126f2c8bd30b8525166"
+ *          '400':
+ *              description: Error, invalid input
+ */
+router.patch('/v1/users/token/refresh/:token', async (req, res) => {
+  try {
+    const oldToken = req.params.token;
+
+    const tokenData = decodeToken(req.params.token);
+    const user = await User.findOne({ _id: tokenData._id, status: 1 });
+
+    if (!user) {
+      throw new Error('Invalid token');
+    }
+
+    // remove current token
+    await User.removeToken(user, oldToken);
+
+    // generate new token
+    const newToken = await user.generateAuthToken();
+
+    res.send({ newtoken: newToken });
+  } catch (e) {
+    logging.routerErrorLog(req, e.toString());
+    res.status(400).send(e.toString());
+  }
+});
+
+/**
+ * @swagger
  * /v1/users/logout:
  *  post:
  *      summary: User logout
@@ -174,10 +222,14 @@ router.post('/v1/users/login', async (req, res) => {
  */
 router.post('/v1/users/logout', auth, async (req, res) => {
   try {
-    req.user.tokens = req.user.tokens.filter((token) => {
-      return token.token !== req.token;
-    });
-    await req.user.save();
+    const user = await User.findOne({ _id: req.user._id });
+
+    if (!user) {
+      throw new Error('Unable to logout the user');
+    }
+
+    // logout the user
+    await User.removeToken(user, req.token);
 
     res.send();
   } catch (e) {
@@ -202,8 +254,9 @@ router.post('/v1/users/logout', auth, async (req, res) => {
  */
 router.post('/v1/users/logoutAll', auth, async (req, res) => {
   try {
-    req.user.tokens = [];
-    await req.user.save();
+    const user = await User.findOne({ _id: req.user._id });
+    user.tokens = [];
+    await user.save();
 
     res.send();
   } catch (e) {
