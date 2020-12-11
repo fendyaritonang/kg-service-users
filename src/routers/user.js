@@ -1,10 +1,11 @@
 const express = require('express');
 const User = require('../models/user');
-const { auth, decodeToken } = require('../middleware/auth');
+const auth = require('../middleware/auth');
 const router = new express.Router();
 const cryptoRandom = require('crypto-random-string');
 const { sendEmailConfirmation, sendForgotPassword } = require('../utils/mail');
 const logging = require('../utils/logging');
+const jwt = require('jsonwebtoken');
 
 /**
  * @swagger
@@ -185,8 +186,7 @@ router.post('/v1/users/login', async (req, res) => {
 router.patch('/v1/users/token/refresh/:token', async (req, res) => {
   try {
     const oldToken = req.params.token;
-
-    const tokenData = decodeToken(req.params.token);
+    const tokenData = jwt.verify(oldToken, process.env.JWT_SECRET);
     const user = await User.findOne({ _id: tokenData._id, status: 1 });
 
     if (!user) {
@@ -334,9 +334,12 @@ router.patch('/v1/users/me', auth, async (req, res) => {
     if (!isValidOperation) {
       throw new Error('Invalid update!');
     }
-    updates.forEach((update) => (req.user[update] = req.body[update]));
-    await req.user.save();
-    res.send(req.user);
+    const user = await User.findOne({
+      email: req.user.email,
+    });
+    updates.forEach((update) => (user[update] = req.body[update]));
+    await user.save();
+    res.send(user);
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
     res.status(400).send(e.toString());
@@ -377,7 +380,8 @@ router.patch('/v1/users/verifyRegistration/:token', async (req, res) => {
   try {
     const user = await User.findOneAndUpdate(
       { verificationToken: req.params.token, status: 2 },
-      { status: 1 }
+      { status: 1 },
+      { new: true }
     );
 
     if (!user) {
@@ -466,9 +470,9 @@ router.patch('/v1/users/password', auth, async (req, res) => {
  *              schema:
  *                  type: "object"
  *                  properties:
- *                      user:
- *                          type: "object"
- *                          $ref: "#/definitions/User"
+ *                      resetPasswordToken:
+ *                          type: "string"
+ *                          example: "5ebe3126f2c8bd30b8525166"
  *                      emailSuccessful:
  *                          type: "boolean"
  *                          example: true
