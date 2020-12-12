@@ -33,3 +33,8 @@ For example if your environment is localhost and designated port number is 3000,
 ```sh
 http://localhost:3000/users-api-docs
 ```
+
+### Authorization Token
+- Once user logged in successfully, API will give a bearer token with user information such as email, name, and language.
+- Authorization token will expire 1 hour after it's generated
+- There is an endpoint to refresh the authorization token. Please see /v1/users/token/refresh/:token
