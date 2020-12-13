@@ -85,7 +85,12 @@ const jwt = require('jsonwebtoken');
  */
 
 router.post('/v1/users/register', async (req, res) => {
-  const user = new User(req.body);
+  const user = new User({
+    email: req.body.email,
+    name: req.body.name,
+    password: req.body.password,
+    language: req.body.language,
+  });
   const verificationToken = cryptoRandom({ length: 16 });
   user.verificationToken = verificationToken;
 
