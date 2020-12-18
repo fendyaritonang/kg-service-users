@@ -5,6 +5,7 @@ const swaggerUi = require('swagger-ui-express');
 const userRouter = require('./routers/user');
 const cors = require('cors');
 const BRAND_SHORT = process.env.BRAND_SHORT || 'Ompusunggu';
+const rateLimit = require('express-rate-limit');
 
 let app = express();
 app.mongoose = mongoose;
@@ -31,6 +32,12 @@ const swaggerOptions = {
   },
   apis: ['src/routers/*.js'],
 };
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 
