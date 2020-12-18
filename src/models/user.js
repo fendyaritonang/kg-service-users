@@ -49,6 +49,13 @@ const userSchema = new mongoose.Schema(
     passwordResetToken: {
       type: String,
     },
+    loginAttempt: {
+      type: Number,
+      default: 0,
+    },
+    loginLastFailed: {
+      type: Date,
+    },
     tokens: [
       {
         token: {
@@ -84,7 +91,7 @@ userSchema.methods.generateAuthToken = async function () {
     language: user.language,
   };
   const token = jwt.sign({ ...data }, process.env.JWT_SECRET, {
-    expiresIn: 60 * 60, // 60 mins
+    expiresIn: 60 * 15, // 60 mins
   });
 
   user.tokens = user.tokens.concat({ token });
@@ -101,11 +108,31 @@ userSchema.statics.findByCredentials = async (email, password) => {
     throw new Error('Unable to login');
   }
 
-  const isMatch = await bcrypt.compare(password, user.password);
+  const thresholdMinute = 15;
+  let loginAttempt = user.loginAttempt || 0;
+  const lastLoginFailed = user.loginLastFailed || moment().utc().format();
+  const duration = moment
+    .duration(moment().diff(moment(lastLoginFailed)))
+    .asMinutes();
 
-  if (!isMatch) {
-    throw new Error('Invalid user or password');
+  if (duration < thresholdMinute && loginAttempt > 5) {
+    throw new Error('Unable to login');
   }
+
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    if (duration >= thresholdMinute) {
+      loginAttempt = 0;
+    }
+    user.loginAttempt = loginAttempt + 1;
+    user.loginLastFailed = moment().utc().format();
+    await user.save();
+    throw new Error('Unable to login');
+  }
+
+  user.loginAttempt = 0;
+  user.loginLastFailed = null;
+  await user.save();
 
   return user;
 };
