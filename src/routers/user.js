@@ -106,7 +106,7 @@ router.post('/v1/users/register', async (req, res) => {
     res.status(201).send({ user, emailRegistrationSuccessful: mailResult });
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(400).send(e);
+    res.status(400).send();
   }
 });
 
@@ -156,26 +156,21 @@ router.post('/v1/users/login', async (req, res) => {
       req.body.email,
       req.body.password
     );
-    const token = await user.generateAuthToken();
+    const token = await user.generateAuthToken(res);
+
     res.send({ user, token });
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(400).send(e.toString());
+    res.status(400).send();
   }
 });
 
 /**
  * @swagger
- * /v1/users/token/refresh/{token}:
+ * /v1/users/token/refresh:
  *  patch:
  *      summary: Refresh user's authentication token
  *      description: Refresh user's authentication token
- *      parameters:
- *          -   in: "path"
- *              name: "token"
- *              description: "Authentication token"
- *              required: true
- *              type: "string"
  *      responses:
  *          '200':
  *              description: Token was successfully refreshed
@@ -188,11 +183,25 @@ router.post('/v1/users/login', async (req, res) => {
  *          '400':
  *              description: Error, invalid input
  */
-router.patch('/v1/users/token/refresh/:token', async (req, res) => {
+router.patch('/v1/users/token/refresh', async (req, res) => {
+  const oldToken = req.cookies.jwt;
+  let tokenData;
+
   try {
-    const oldToken = req.params.token;
-    const tokenData = jwt.verify(oldToken, process.env.JWT_SECRET);
-    const user = await User.findOne({ _id: tokenData._id, status: 1 });
+    tokenData = jwt.verify(oldToken, process.env.JWT_SECRET);
+  } catch (e) {
+    logoutCookie(res, req);
+    logging.routerErrorLog(req, e.toString());
+    return res.status(401).send();
+  }
+
+  try {
+    // check in database if token exist
+    const user = await User.findOne({
+      _id: tokenData._id,
+      status: 1,
+      'tokens.token': oldToken,
+    });
 
     if (!user) {
       throw new Error('Invalid token');
@@ -202,12 +211,13 @@ router.patch('/v1/users/token/refresh/:token', async (req, res) => {
     await User.removeToken(user, oldToken);
 
     // generate new token
-    const newToken = await user.generateAuthToken();
+    const newToken = await user.generateAuthToken(res);
 
     res.send({ newtoken: newToken });
   } catch (e) {
+    logoutCookie(res, req);
     logging.routerErrorLog(req, e.toString());
-    res.status(400).send(e.toString());
+    res.status(400).send();
   }
 });
 
@@ -222,8 +232,6 @@ router.patch('/v1/users/token/refresh/:token', async (req, res) => {
  *              description: User was successfully logged out
  *          '500':
  *              description: Error, unable to logout the user
- *      security:
- *      -   JWT: []
  */
 router.post('/v1/users/logout', auth, async (req, res) => {
   try {
@@ -235,11 +243,12 @@ router.post('/v1/users/logout', auth, async (req, res) => {
 
     // logout the user
     await User.removeToken(user, req.token);
+    logoutCookie(res, req);
 
     res.send();
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(500).send(e.toString());
+    res.status(500).send();
   }
 });
 
@@ -254,14 +263,13 @@ router.post('/v1/users/logout', auth, async (req, res) => {
  *              description: User was successfully logged out from all devices
  *          '500':
  *              description: Error, unable to logout the user
- *      security:
- *      -   JWT: []
  */
 router.post('/v1/users/logoutAll', auth, async (req, res) => {
   try {
     const user = await User.findOne({ _id: req.user._id });
     user.tokens = [];
     await user.save();
+    logoutCookie(res, req);
 
     res.send();
   } catch (e) {
@@ -284,8 +292,6 @@ router.post('/v1/users/logoutAll', auth, async (req, res) => {
  *                  $ref: "#/definitions/User"
  *          '401':
  *              description: Error, user is not authenticated
- *      security:
- *      -   JWT: []
  */
 router.get('/v1/users/me', auth, async (req, res) => {
   res.send(req.user);
@@ -325,8 +331,6 @@ router.get('/v1/users/me', auth, async (req, res) => {
  *              description: Error, invalid update
  *          '401':
  *              description: Error, user is not authenticated
- *      security:
- *      -   JWT: []
  */
 router.patch('/v1/users/me', auth, async (req, res) => {
   const updates = Object.keys(req.body);
@@ -347,7 +351,7 @@ router.patch('/v1/users/me', auth, async (req, res) => {
     res.send(user);
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(400).send(e.toString());
+    res.status(400).send();
   }
 });
 
@@ -396,7 +400,7 @@ router.patch('/v1/users/verifyRegistration/:token', async (req, res) => {
     res.send(user);
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(404).send(e.toString());
+    res.status(404).send();
   }
 });
 
@@ -426,8 +430,6 @@ router.patch('/v1/users/verifyRegistration/:token', async (req, res) => {
  *              description: Password has been changed successfully
  *          '400':
  *              description: Error, invalid update
- *      security:
- *      -   JWT: []
  */
 router.patch('/v1/users/password', auth, async (req, res) => {
   try {
@@ -445,7 +447,7 @@ router.patch('/v1/users/password', auth, async (req, res) => {
     res.send();
   } catch (e) {
     console.log(e.toString());
-    res.status(400).send(e.toString());
+    res.status(400).send();
   }
 });
 
@@ -509,7 +511,7 @@ router.post('/v1/users/forgotpassword', async (req, res) => {
     });
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(400).send(e.toString());
+    res.status(400).send();
   }
 });
 
@@ -559,8 +561,12 @@ router.patch('/v1/users/resetpassword/:token', async (req, res) => {
     res.send();
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(500).send(e);
+    res.status(500).send();
   }
 });
+
+logoutCookie = (res, req) => {
+  res.cookie('jwt', req.token, { maxAge: 0 });
+};
 
 module.exports = router;

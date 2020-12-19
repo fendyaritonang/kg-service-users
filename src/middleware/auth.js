@@ -3,7 +3,7 @@ const logging = require('../utils/logging');
 
 const auth = (req, res, next) => {
   try {
-    const token = req.header('Authorization').replace('Bearer ', '');
+    const token = req.cookies.jwt;
     const tokenData = jwt.verify(token, process.env.JWT_SECRET);
 
     req.token = token;

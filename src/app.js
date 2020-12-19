@@ -4,12 +4,14 @@ const swaggerJsDoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 const userRouter = require('./routers/user');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const BRAND_SHORT = process.env.BRAND_SHORT || 'Ompusunggu';
 const rateLimit = require('express-rate-limit');
 
 let app = express();
 app.mongoose = mongoose;
 app.use(cors());
+app.use(cookieParser());
 
 const swaggerOptions = {
   swaggerDefinition: {
@@ -18,15 +20,6 @@ const swaggerOptions = {
       description: `Documentation of ${BRAND_SHORT} User Service API`,
       contact: {
         name: BRAND_SHORT,
-      },
-    },
-    securityDefinitions: {
-      JWT: {
-        description:
-          'Please copy and paste the token with prefix "Bearer " in input box.',
-        type: 'apiKey',
-        name: 'Authorization',
-        in: 'header',
       },
     },
   },

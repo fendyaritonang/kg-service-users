@@ -34,21 +34,19 @@ global.testHelper = {
   userLogout: async (token) => {
     const res = await request(app)
       .post('/v1/users/logout')
-      .set({
-        authorization: `Bearer ${token}`,
-      });
+      .set('Cookie', `jwt=${token}`);
     return res;
   },
   userLogoutAll: async (token) => {
     const res = await request(app)
       .post('/v1/users/logoutAll')
-      .set({
-        authorization: `Bearer ${token}`,
-      });
+      .set('Cookie', `jwt=${token}`);
     return res;
   },
   tokenRefresh: async (token) => {
-    const res = await request(app).patch(`/v1/users/token/refresh/${token}`);
+    const res = await request(app)
+      .patch(`/v1/users/token/refresh`)
+      .set('Cookie', `jwt=${token}`);
     return res;
   },
   userRegistration: async (data) => {
@@ -68,26 +66,20 @@ global.testHelper = {
   userGet: async (token) => {
     const res = await request(app)
       .get(`/v1/users/me`)
-      .set({
-        authorization: `Bearer ${token}`,
-      });
+      .set('Cookie', `jwt=${token}`);
     return res;
   },
   userUpdate: async (token, data) => {
     const res = await request(app)
       .patch(`/v1/users/me`)
-      .set({
-        authorization: `Bearer ${token}`,
-      })
+      .set('Cookie', `jwt=${token}`)
       .send(data);
     return res;
   },
   userChangePassword: async (token, data) => {
     const res = await request(app)
       .patch(`/v1/users/password`)
-      .set({
-        authorization: `Bearer ${token}`,
-      })
+      .set('Cookie', `jwt=${token}`)
       .send(data);
     return res;
   },

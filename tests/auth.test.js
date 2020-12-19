@@ -17,7 +17,7 @@ describe('Authentication test script', () => {
     const to = parseInt(tokenData.exp);
     const duration = to - from;
 
-    expect(duration).toEqual(3600); // token time to live must be 3600 seconds (1 hour)
+    expect(duration).toEqual(900); // token time to live must be 3600 seconds (15 mins)
     expect(res.statusCode).toEqual(200);
   }, 10000);
 
@@ -46,7 +46,7 @@ describe('Authentication test script', () => {
     });
     const refreshResult = await testHelper.tokenRefresh(res.body.token + 'xxx');
 
-    expect(refreshResult.statusCode).toEqual(400);
+    expect(refreshResult.statusCode).toEqual(401);
   }, 10000);
 
   test('Logout with correct authorization token should success', async () => {

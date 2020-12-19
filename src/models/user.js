@@ -82,7 +82,7 @@ userSchema.methods.toJSON = function () {
   return userObject;
 };
 
-userSchema.methods.generateAuthToken = async function () {
+userSchema.methods.generateAuthToken = async function (res) {
   const user = this;
   const data = {
     _id: user._id.toString(),
@@ -91,11 +91,18 @@ userSchema.methods.generateAuthToken = async function () {
     language: user.language,
   };
   const token = jwt.sign({ ...data }, process.env.JWT_SECRET, {
-    expiresIn: 60 * 15, // 60 mins
+    expiresIn: 60 * 15, // 15 mins
   });
 
   user.tokens = user.tokens.concat({ token });
   await user.save();
+
+  const localHttps = process.env.LOCAL_HTTPS || 0;
+  res.cookie('jwt', token, {
+    maxAge: 1200000, // 20 minutes
+    httpOnly: true,
+    secure: localHttps === 1 ? true : false,
+  });
 
   return token;
 };
@@ -105,7 +112,7 @@ userSchema.statics.findByCredentials = async (email, password) => {
   const user = await User.findOne({ email, status: 1 });
 
   if (!user) {
-    throw new Error('Unable to login');
+    throw new Error('user account not found');
   }
 
   const thresholdMinute = 15;
@@ -116,7 +123,7 @@ userSchema.statics.findByCredentials = async (email, password) => {
     .asMinutes();
 
   if (duration < thresholdMinute && loginAttempt > 5) {
-    throw new Error('Unable to login');
+    throw new Error('maximum login attempt has reached threshold');
   }
 
   const isMatch = await bcrypt.compare(password, user.password);
@@ -127,7 +134,7 @@ userSchema.statics.findByCredentials = async (email, password) => {
     user.loginAttempt = loginAttempt + 1;
     user.loginLastFailed = moment().utc().format();
     await user.save();
-    throw new Error('Unable to login');
+    throw new Error('invalid username or password');
   }
 
   user.loginAttempt = 0;
