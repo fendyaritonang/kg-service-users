@@ -43,6 +43,10 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 2, // pending verification
     },
+    role: {
+      type: Number,
+      default: 2, // 1: admin, 2: user
+    },
     verificationToken: {
       type: String,
     },
@@ -89,6 +93,7 @@ userSchema.methods.generateAuthToken = async function (res) {
     email: user.email,
     name: user.name,
     language: user.language,
+    role: user.role,
   };
   const token = jwt.sign({ ...data }, process.env.JWT_SECRET, {
     expiresIn: 60 * 15, // 15 mins
@@ -97,11 +102,10 @@ userSchema.methods.generateAuthToken = async function (res) {
   user.tokens = user.tokens.concat({ token });
   await user.save();
 
-  const localHttps = process.env.LOCAL_HTTPS || 0;
   res.cookie('jwt', token, {
     maxAge: 1200000, // 20 minutes
     httpOnly: true,
-    secure: localHttps === 1 ? true : false,
+    secure: true,
   });
 
   return token;

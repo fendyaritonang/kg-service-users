@@ -8,9 +8,16 @@ const cookieParser = require('cookie-parser');
 const BRAND_SHORT = process.env.BRAND_SHORT || 'Ompusunggu';
 const rateLimit = require('express-rate-limit');
 
+const corsOptions = {
+  origin: true,
+  methods: ['POST', 'PUT', 'DELETE', 'PATCH', 'GET'],
+  credentials: true,
+  maxAge: 3600,
+};
+
 let app = express();
 app.mongoose = mongoose;
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(cookieParser());
 
 const swaggerOptions = {

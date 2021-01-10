@@ -158,7 +158,16 @@ router.post('/v1/users/login', async (req, res) => {
     );
     const token = await user.generateAuthToken(res);
 
-    res.send({ user, token });
+    res.send({
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        language: user.language,
+        role: user.role,
+      },
+      token,
+    });
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
     res.status(400).send();

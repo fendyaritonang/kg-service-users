@@ -18,13 +18,17 @@ const sendForgotPassword = async ({ email, forgotPasswordURL }) => {
       html: `<!DOCTYPE html><html><body><h1>Reset Your Password</h1><p>Please click the following link to reset your password</p><a href="${forgotPasswordURL}" target="_blank">${forgotPasswordURL}</a><br/><br/>Thank you.<br/>${brandLong}</body></html>`,
     };
 
-    const response = await sgMail.send(msg);
+    /*const response = await sgMail.send(msg);
 
     if (response[0].statusCode === 202) {
       return true;
     } else {
       return false;
-    }
+    }*/
+
+    console.log(msg);
+
+    return true;
   } catch (e) {
     return false;
   }
@@ -47,13 +51,17 @@ const sendEmailConfirmation = async ({
       html: `<!DOCTYPE html><html><body><h1>Confirm you email</h1><p>Please confirm your registration by clicking on the link below</p><a href="${registrationConfirmationURL}" target="_blank">${registrationConfirmationURL}</a><br/><br/>Thank you.<br/>${brandLong}</body></html>`,
     };
 
-    const response = await sgMail.send(msg);
+    /*const response = await sgMail.send(msg);
 
     if (response[0].statusCode === 202) {
       return true;
     } else {
       return false;
-    }
+    }*/
+
+    console.log(msg);
+
+    return true;
   } catch (e) {
     console.log(e.toString());
     return false;
