@@ -23,6 +23,7 @@
 9. SMTP_API_KEY: this is the API key generated from sendgrid.com. To get a new one, you can visit https://sendgrid.com/
 10. BRAND_SHORT: this is your brand name in short. If no value defined, then it will use default value
 11. BRAND_LONG: this is your complete brand name. If no value defined, then it will use default value
+12. LOCAL_HTTPS: this is a flag to indicate whether you want to activate local HTTPS. Value 1 means you want to activate. To activate local HTTPS, you will need SSL certificate and copy them to config folder which the same level with src folder
 
 ### Swagger API Documentation 
 Once the application is running, API documentation can be viewed through swagger at
@@ -33,3 +34,12 @@ For example if your environment is localhost and designated port number is 3000,
 ```sh
 http://localhost:3000/users-api-docs
 ```
+
+### Authorization Token
+- Once user logged in successfully, API will give a bearer token with user information such as email, name, and language.
+- Authorization token will expire 15 minus after it's generated
+- There is an endpoint to refresh the authorization token. Please see /v1/users/token/refresh/:token
+
+### Login
+- For security purpose, login attempt is limited to 5 times.
+- Login error messages are intentionaly set to be unclear for security purpose.

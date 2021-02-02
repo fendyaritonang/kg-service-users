@@ -5,6 +5,7 @@ const router = new express.Router();
 const cryptoRandom = require('crypto-random-string');
 const { sendEmailConfirmation, sendForgotPassword } = require('../utils/mail');
 const logging = require('../utils/logging');
+const jwt = require('jsonwebtoken');
 
 /**
  * @swagger
@@ -84,7 +85,12 @@ const logging = require('../utils/logging');
  */
 
 router.post('/v1/users/register', async (req, res) => {
-  const user = new User(req.body);
+  const user = new User({
+    email: req.body.email,
+    name: req.body.name,
+    password: req.body.password,
+    language: req.body.language,
+  });
   const verificationToken = cryptoRandom({ length: 16 });
   user.verificationToken = verificationToken;
 
@@ -100,7 +106,7 @@ router.post('/v1/users/register', async (req, res) => {
     res.status(201).send({ user, emailRegistrationSuccessful: mailResult });
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(400).send(e);
+    res.status(400).send();
   }
 });
 
@@ -150,11 +156,77 @@ router.post('/v1/users/login', async (req, res) => {
       req.body.email,
       req.body.password
     );
-    const token = await user.generateAuthToken();
-    res.send({ user, token });
+    const token = await user.generateAuthToken(res);
+
+    res.send({
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        language: user.language,
+        role: user.role,
+      },
+      token,
+    });
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(400).send(e.toString());
+    res.status(400).send();
+  }
+});
+
+/**
+ * @swagger
+ * /v1/users/token/refresh:
+ *  patch:
+ *      summary: Refresh user's authentication token
+ *      description: Refresh user's authentication token
+ *      responses:
+ *          '200':
+ *              description: Token was successfully refreshed
+ *              schema:
+ *                  type: "object"
+ *                  properties:
+ *                      newtoken:
+ *                          type: "string"
+ *                          example: "5ebe3126f2c8bd30b8525166"
+ *          '400':
+ *              description: Error, invalid input
+ */
+router.patch('/v1/users/token/refresh', async (req, res) => {
+  const oldToken = req.cookies.jwt;
+  let tokenData;
+
+  try {
+    tokenData = jwt.verify(oldToken, process.env.JWT_SECRET);
+  } catch (e) {
+    logoutCookie(res, req);
+    logging.routerErrorLog(req, e.toString());
+    return res.status(401).send();
+  }
+
+  try {
+    // check in database if token exist
+    const user = await User.findOne({
+      _id: tokenData._id,
+      status: 1,
+      'tokens.token': oldToken,
+    });
+
+    if (!user) {
+      throw new Error('Invalid token');
+    }
+
+    // remove current token
+    await User.removeToken(user, oldToken);
+
+    // generate new token
+    const newToken = await user.generateAuthToken(res);
+
+    res.send({ newtoken: newToken });
+  } catch (e) {
+    logoutCookie(res, req);
+    logging.routerErrorLog(req, e.toString());
+    res.status(400).send();
   }
 });
 
@@ -169,20 +241,23 @@ router.post('/v1/users/login', async (req, res) => {
  *              description: User was successfully logged out
  *          '500':
  *              description: Error, unable to logout the user
- *      security:
- *      -   JWT: []
  */
 router.post('/v1/users/logout', auth, async (req, res) => {
   try {
-    req.user.tokens = req.user.tokens.filter((token) => {
-      return token.token !== req.token;
-    });
-    await req.user.save();
+    const user = await User.findOne({ _id: req.user._id });
+
+    if (!user) {
+      throw new Error('Unable to logout the user');
+    }
+
+    // logout the user
+    await User.removeToken(user, req.token);
+    logoutCookie(res, req);
 
     res.send();
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(500).send(e.toString());
+    res.status(500).send();
   }
 });
 
@@ -197,13 +272,13 @@ router.post('/v1/users/logout', auth, async (req, res) => {
  *              description: User was successfully logged out from all devices
  *          '500':
  *              description: Error, unable to logout the user
- *      security:
- *      -   JWT: []
  */
 router.post('/v1/users/logoutAll', auth, async (req, res) => {
   try {
-    req.user.tokens = [];
-    await req.user.save();
+    const user = await User.findOne({ _id: req.user._id });
+    user.tokens = [];
+    await user.save();
+    logoutCookie(res, req);
 
     res.send();
   } catch (e) {
@@ -226,8 +301,6 @@ router.post('/v1/users/logoutAll', auth, async (req, res) => {
  *                  $ref: "#/definitions/User"
  *          '401':
  *              description: Error, user is not authenticated
- *      security:
- *      -   JWT: []
  */
 router.get('/v1/users/me', auth, async (req, res) => {
   res.send(req.user);
@@ -267,8 +340,6 @@ router.get('/v1/users/me', auth, async (req, res) => {
  *              description: Error, invalid update
  *          '401':
  *              description: Error, user is not authenticated
- *      security:
- *      -   JWT: []
  */
 router.patch('/v1/users/me', auth, async (req, res) => {
   const updates = Object.keys(req.body);
@@ -281,12 +352,15 @@ router.patch('/v1/users/me', auth, async (req, res) => {
     if (!isValidOperation) {
       throw new Error('Invalid update!');
     }
-    updates.forEach((update) => (req.user[update] = req.body[update]));
-    await req.user.save();
-    res.send(req.user);
+    const user = await User.findOne({
+      email: req.user.email,
+    });
+    updates.forEach((update) => (user[update] = req.body[update]));
+    await user.save();
+    res.send(user);
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(400).send(e.toString());
+    res.status(400).send();
   }
 });
 
@@ -324,7 +398,8 @@ router.patch('/v1/users/verifyRegistration/:token', async (req, res) => {
   try {
     const user = await User.findOneAndUpdate(
       { verificationToken: req.params.token, status: 2 },
-      { status: 1 }
+      { status: 1 },
+      { new: true }
     );
 
     if (!user) {
@@ -334,7 +409,7 @@ router.patch('/v1/users/verifyRegistration/:token', async (req, res) => {
     res.send(user);
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(404).send(e.toString());
+    res.status(404).send();
   }
 });
 
@@ -364,8 +439,6 @@ router.patch('/v1/users/verifyRegistration/:token', async (req, res) => {
  *              description: Password has been changed successfully
  *          '400':
  *              description: Error, invalid update
- *      security:
- *      -   JWT: []
  */
 router.patch('/v1/users/password', auth, async (req, res) => {
   try {
@@ -383,7 +456,7 @@ router.patch('/v1/users/password', auth, async (req, res) => {
     res.send();
   } catch (e) {
     console.log(e.toString());
-    res.status(400).send(e.toString());
+    res.status(400).send();
   }
 });
 
@@ -413,9 +486,9 @@ router.patch('/v1/users/password', auth, async (req, res) => {
  *              schema:
  *                  type: "object"
  *                  properties:
- *                      user:
- *                          type: "object"
- *                          $ref: "#/definitions/User"
+ *                      resetPasswordToken:
+ *                          type: "string"
+ *                          example: "5ebe3126f2c8bd30b8525166"
  *                      emailSuccessful:
  *                          type: "boolean"
  *                          example: true
@@ -447,7 +520,7 @@ router.post('/v1/users/forgotpassword', async (req, res) => {
     });
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(400).send(e.toString());
+    res.status(400).send();
   }
 });
 
@@ -497,8 +570,12 @@ router.patch('/v1/users/resetpassword/:token', async (req, res) => {
     res.send();
   } catch (e) {
     logging.routerErrorLog(req, e.toString());
-    res.status(500).send(e);
+    res.status(500).send();
   }
 });
+
+logoutCookie = (res, req) => {
+  res.cookie('jwt', req.token, { maxAge: 0 });
+};
 
 module.exports = router;

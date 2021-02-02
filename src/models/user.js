@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const validator = require('validator');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const moment = require('moment');
 
 const userSchema = new mongoose.Schema(
   {
@@ -24,6 +25,7 @@ const userSchema = new mongoose.Schema(
     },
     language: {
       type: String,
+      required: true,
       default: 'english', // english
     },
     password: {
@@ -41,22 +43,25 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 2, // pending verification
     },
+    role: {
+      type: Number,
+      default: 2, // 1: admin, 2: user
+    },
     verificationToken: {
       type: String,
     },
     passwordResetToken: {
       type: String,
     },
+    loginAttempt: {
+      type: Number,
+      default: 0,
+    },
+    loginLastFailed: {
+      type: Date,
+    },
     tokens: [
       {
-        issuedDate: {
-          type: Date,
-          required: true,
-        },
-        activeDate: {
-          type: Date,
-          required: true,
-        },
         token: {
           type: String,
           required: true,
@@ -81,15 +86,27 @@ userSchema.methods.toJSON = function () {
   return userObject;
 };
 
-userSchema.methods.generateAuthToken = async function () {
+userSchema.methods.generateAuthToken = async function (res) {
   const user = this;
-  const token = jwt.sign({ _id: user._id.toString() }, process.env.JWT_SECRET);
+  const data = {
+    _id: user._id.toString(),
+    email: user.email,
+    name: user.name,
+    language: user.language,
+    role: user.role,
+  };
+  const token = jwt.sign({ ...data }, process.env.JWT_SECRET, {
+    expiresIn: 60 * 15, // 15 mins
+  });
 
-  const issuedDate = Date.now();
-  const activeDate = issuedDate;
-
-  user.tokens = user.tokens.concat({ issuedDate, activeDate, token });
+  user.tokens = user.tokens.concat({ token });
   await user.save();
+
+  res.cookie('jwt', token, {
+    maxAge: 1200000, // 20 minutes
+    httpOnly: true,
+    secure: true,
+  });
 
   return token;
 };
@@ -99,16 +116,43 @@ userSchema.statics.findByCredentials = async (email, password) => {
   const user = await User.findOne({ email, status: 1 });
 
   if (!user) {
-    throw new Error('Unable to login');
+    throw new Error('user account not found');
+  }
+
+  const thresholdMinute = 15;
+  let loginAttempt = user.loginAttempt || 0;
+  const lastLoginFailed = user.loginLastFailed || moment().utc().format();
+  const duration = moment
+    .duration(moment().diff(moment(lastLoginFailed)))
+    .asMinutes();
+
+  if (duration < thresholdMinute && loginAttempt > 5) {
+    throw new Error('maximum login attempt has reached threshold');
   }
 
   const isMatch = await bcrypt.compare(password, user.password);
-
   if (!isMatch) {
-    throw new Error('Invalid user or password');
+    if (duration >= thresholdMinute) {
+      loginAttempt = 0;
+    }
+    user.loginAttempt = loginAttempt + 1;
+    user.loginLastFailed = moment().utc().format();
+    await user.save();
+    throw new Error('invalid username or password');
   }
 
+  user.loginAttempt = 0;
+  user.loginLastFailed = null;
+  await user.save();
+
   return user;
+};
+
+userSchema.statics.removeToken = async (userObject, tokenToRemove) => {
+  userObject.tokens = userObject.tokens.filter((token) => {
+    return token.token !== tokenToRemove;
+  });
+  await userObject.save();
 };
 
 // Hash the plain text password before saving
